@@ -1,0 +1,155 @@
+install.packages("drat") 
+install.packages("tidyquant")
+install.packages("jpndistrict")
+install.packages("maps") # easier repo access + creation
+drat:::add("ghrr")             # make it known
+install.packages("gtrendsR")
+install.packages("devtools")
+install.packages("reshape")
+devtools::install_github("lionel-/ggstance")
+if (!require("devtools")) install.packages("devtools")
+
+#簡易分析
+Sys.setlocale(locale="C")
+res <- gtrends(c("コロナ","マスク"), geo = "JP")
+plot(res)
+
+library(gtrendsR)
+library(tidyverse)
+library(lubridate)
+library(tidyquant)
+library(ggplot2)
+library(fs)
+library(plotly)
+library(formattable)
+library(scales)
+library(maps)
+library(jpndistrict)
+library("reshape")
+library("stringi")
+
+
+#set up search terms
+Sys.setlocale(locale="C")
+gtrendsR::gtrends()
+ggplot2::map_data
+search_terms <- c("コロナ","マスク","ステイホーム")
+
+#read search terms
+gtrends_lst <- search_terms　%>%
+  gtrends(geo = "JP",time = "all")
+
+gtrends_lst %>% names()
+
+#search interest over time
+gtrends_lst %>%
+  pluck("interest_over_time") %>%
+  mutate("hits" = as.numeric(hits)) %>%
+  as_tibble() %>%
+  ggplot(aes(date, hits,color=keyword)) +
+  geom_line()+
+  geom_smooth(span = 0.3,se = FALSE)+
+  labs(title = "Keyword Trends - JP - Over Time")
+  
+
+
+#関連検索
+
+gtrends_lst %>% pluck("related_queries") %>% DataExplorer::plot_bar() 
+
+n_terms <- 10
+
+top_related_searches_tbl <- gtrends_lst %>%
+  pluck("related_queries") %>%
+  as_tibble() %>%
+  filter(related_queries == "top") %>%
+  mutate(interest = as.numeric(subject)) %>%
+  
+  select(keyword,value,interest) %>%
+  group_by(keyword) %>%
+  arrange(desc(interest)) %>%
+  slice(1:n_terms)%>%
+  ungroup()%>%
+  
+  mutate(value = as_factor(value) %>% fct_reorder(interest))
+
+top_related_searches_tbl %>% 
+  ggplot(aes(value,interest,color = keyword))+
+  geom_segment(aes(xend  = value,yend = 0))+
+  geom_point()+
+  coord_flip()+
+  facet_wrap(~keyword,nrow = 1,scales = "free_y")
+
+#trends by geog
+gtrends_lst %>%
+  pluck("interest_by_region") %>%
+  as_tibble()
+
+japan_tbl <- map_data("world2","japan") %>%
+  as_tibble()%>%
+  mutate(region = str_to_title(region))
+tail(japan_tbl)
+
+japan_trends_tbl <- gtrends_lst %>%
+  pluck("interest_by_region") %>%
+  #subregionとlocationを結合したいが、一方にprefectureが含まれており、完全結合できない
+  left_join(japan_tbl,by = c("location" = "subregion")) %>%
+  as_tibble()
+
+japan_trends_tbl %>%
+  
+  ggplot(aes(long,lat))+
+  geom_polygon(aes(group = group,fill=hits))+
+  coord_map()+
+  scale_fill_viridis_c()+
+  facet_wrap(~keyword,nrow = 1)+
+  labs(title = "Keyword Trends - Japan")
+
+#import external data all rugby
+data <- read.csv("Rugby.csv",header=TRUE)
+default_mai <-par()
+
+#グラフパラメータの設定
+mai <- par()$mai
+
+#余白サイズの設定(上下と左右の幅を揃える)
+mai[4] <- mai[1] 
+
+#指定した余白サイズの適用
+par(mai = mai)
+matplot(data$season, data[c("audience","market")], type="o", lty=1,
+        pch=c(15,14), col=c("#ff9900","#00ff00"), xlab="シーズン", ylab="audience/market")
+##2つ目のグラフの表示
+par(new = T) #現在のplotに上描きの設定
+
+plot(
+  data$team, #plotしたいものを指定
+  type = "o", 
+  pch=16, 
+  axes = FALSE,#axes=Fの指定をしないと既存の軸の上に軸が乗ってしまう
+  xlab = "",
+  ylab = "", #空にしておかないと既存の表示の上に重なってしまう 
+  col="#66ccff"
+)
+
+#2軸目を表示
+axis(4) #どこにメモリを置くか(1なら下,2なら左,3なら上,4なら右)
+
+#2軸目のラベル設定
+mtext("team", #2軸目のラベル名
+      side = 4, 
+      line = 2 #グラフの枠からの距離
+)
+legend("topleft", legend=c("team","audience","market(M)"), pch=c(16,15,14), col=c("#66ccff","#ff9900","#00ff00"))
+
+#それぞれの変数において、単回帰分析を行う
+
+cor(data$audience,data$team)
+r = lm(data$team ~ data$season)
+summary(r)
+abline(r, col="gray")
+r1 = lm(data$audience ~ data$season)
+abline(r1)
+r1
+r2 = lm(data$market ~ data$season)
+abline(r2, col="green")
